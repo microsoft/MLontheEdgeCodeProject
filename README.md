@@ -12,7 +12,7 @@ The overall purpose of this document is to showcase an example of Azure Machine 
 7. [MLonEdge with Docker](https://github.com/Microsoft/MLontheEdgeCodeProject#quick-project-run-with-docker)
 7. [MlonEdge by Hand](https://github.com/Microsoft/MLontheEdgeCodeProject#do-it-yourself)
 8. [Running Application](https://github.com/Microsoft/MLontheEdgeCodeProject#running-applications)
-9. [Contribution]((https://github.com/Microsoft/MLontheEdgeCodeProject#contributing)
+9. [Contribution](https://github.com/Microsoft/MLontheEdgeCodeProject#contributing)
 ## Acquiring Equipments
 <table>
   <tr>
