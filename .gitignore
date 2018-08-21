@@ -328,3 +328,7 @@ ASALocalRun/
 
 # MFractors (Xamarin productivity tool) working folder 
 .mfractor/
+
+# Personal Project Gitignore Changes
+/pi3/*
+/pi3/build/*
