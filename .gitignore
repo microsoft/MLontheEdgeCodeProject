@@ -295,7 +295,7 @@ paket-files/
 .cr/
 
 # Python Tools for Visual Studio (PTVS)
-__pycache__/
+/Scripts/__pycache__/
 *.pyc
 
 # Cake - Uncomment if you are using it
@@ -330,5 +330,6 @@ ASALocalRun/
 .mfractor/
 
 # Personal Project Gitignore Changes
-/pi3/*
-/pi3/build/*
+/Scripts/pi3/*
+/Scripts/pi3/build/*
+/Scripts/categories.txt
