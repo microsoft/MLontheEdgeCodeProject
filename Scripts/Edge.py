@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
-
+###############################################################################
+#
+#  Project:  MLontheEdgeCodeStory
+#  File:     Edge.py
+#  Authors:  David (Seun) Odun-Ayo
+#  Emails:   dodunayo@nd.edu | dave_seun@yahoo.com
+#  Description: This is the main script in the Code Story Project. This script
+#  sets up a connection to Azure IoTHub, Twilio, and Azure Blob Storage. As well,
+#  the script is contanstly taking pictures of the world around and making ML model
+#  predictions on the images taken. Images are saved on Azure Blob Storage and 
+#  there is a constant check for new updates the ML model.
+#  Requires: Python 3.5.3
+#
+###############################################################################
 import cv2
 import ellmanager as emanager
 import io
@@ -19,17 +32,38 @@ import tty
 import zipfile
 from datetime import datetime, timedelta
 from azure.storage.blob import BlockBlobService, ContentSettings, PublicAccess
+from iothub_client import IoTHubClient, IoTHubClientError, IoTHubTransportProvider, IoTHubClientResult, IoTHubError, DeviceMethodReturnValue
+from iothub_service_client import IoTHubRegistryManager, IoTHubRegistryManagerAuthMethod
+from iothub_service_client import IoTHubDeviceTwin, IoTHubError
+from twilio.rest import Client
 
 SCRIPT_DIR = os.path.split(os.path.realpath(__file__))[0]
+CONNECTION_STRING = ""
+PROTOCOL = IoTHubTransportProvider.MQTT
+CLIENT = IoTHubClient(CONNECTION_STRING, PROTOCOL)
+SEND_REPORTED_STATE_CONTEXT = 0
+METHOD_CONTEXT = 0
+SEND_REPORTED_STATE_CALLBACKS = 0
+METHOD_CALLBACKS = 0
 
 class PiImageDetection():
     
     def __init__(self):
+        # Intialize Azure Blob Container Properties
         self.picture_container_name = 'edgeimages'
         self.video_container_name = 'edgevideos'
         self.model_container_name = 'edgemodels'
         self.json_container_name = 'edgejson'
 
+        # Intialize Azure IoTHub Config Properties
+        self.capture_rate = 30.0
+        self.prediction_threshold = 0.2
+        self.camera_res_len = 256
+        self.camera_res_wid = 256
+        self.video_capture_length = 30
+        self.video_preroll = 5
+        self.capture_video = False
+        self.send_twilio_sms = True
         azure_key_name = os.environ.get('AZURE_BLOBCONTAINER_NAME')
         azure_key = os.environ.get('AZURE_BLOBCONTAINER_KEY')
 
@@ -55,9 +89,9 @@ class PiImageDetection():
             sys.exit(1)
         return str(output.rstrip().decode())
 
-    def save_video(self, capture_rate, input_path, output_path, rename_path):
+    def save_video(self, input_path, output_path, rename_path):
         # Convert each indivudul .h264 to mp4 
-        mp4_box = "MP4Box -fps {0} -quiet -add {1} {2}".format(capture_rate, input_path, output_path)
+        mp4_box = "MP4Box -fps {0} -quiet -add {1} {2}".format(self.capture_rate, input_path, output_path)
         # Call the OS to perform the compressing
         self.run_shell(mp4_box)
         # Remove the .h264 file to save space on the RPI
@@ -65,6 +99,17 @@ class PiImageDetection():
         # Rename for Better Convention Understanding
         os.rename(output_path, rename_path)
         logging.debug('Video Saved')
+
+    def twilio_messaging(self, prediction_word, prediction_value):
+        account_sid = os.environ.get('TWILIO_ACCOUNT_SID')
+        auth_token = os.environ.get('TWILIO_AUTH_TOKEN')
+        twilio_client = Client(account_sid, auth_token)
+
+        twilio_client.messages.create(
+            to = os.environ.get('MY_PHONE_NUMBER'),
+            from_ = os.environ.get('TWILIO_PHONE_NUMBER'),
+            body = "Prediction(s): {0} & Prediction Confidence: {1}".format(prediction_word, prediction_value)
+                )
 
     def model_predict(self, image):
         # Open the required categories.txt file used for identify the labels for recognized images
@@ -147,19 +192,70 @@ class PiImageDetection():
             with open (update_json_path, "w+") as j:
                 json.dump(json_data, j)
 
+    def iothub_client_init(self):
+        if CLIENT.protocol == IoTHubTransportProvider.MQTT or client.protocol == IoTHubTransportProvider.MQTT_WS:
+            CLIENT.set_device_method_callback(self.device_method_callback, METHOD_CONTEXT)
+
+    def send_reported_state_callback(self, status_code, user_context):
+        global SEND_REPORTED_STATE_CALLBACKS
+        print ( "Device twins updated." )
+
+    def device_method_callback(self, method_name, payload, user_context):
+        global METHOD_CALLBACKS
+
+        if method_name == "DeviceConfig":
+            logging.debug( "Waiting for Configuration..." )
+            if payload is not None:
+                print ("Payload Received: {0}".format(payload))
+                # Parse the Payload right here
+                configuration = json.loads(payload)
+                for key, value in dict.items(configuration):
+                    print("Key and Value from Azure: {0} and {1}".format(key, value))
+                    if isinstance(value, str):
+                        if key == "predictionThreshold":
+                            self.prediction_threshold = float(value)
+                        elif key == "captureRate":
+                            self.capture_rate = float(value)
+                        elif key == "cameraResolutionLength":
+                            self.camera_res_len = int(value)
+                        elif key == "cameraResolutionWidth":
+                            self.camera_res_wid = int(value)
+                        elif key == "captureLength":
+                            self.video_capture_length = int(value)
+                        elif key == "capturePreroll":
+                            self.video_preroll = int(value)
+                    elif isinstance(value, bool):
+                        if key == "captureVideo":
+                            self.capture_video = bool(value)
+                    else:
+                        logging.debug("The value was a string")
+                    
+                    
+            current_time = str(datetime.now().isoformat())
+            reported_state = "{\"rebootTime\":\"" + current_time + "\"}"
+            CLIENT.send_reported_state(reported_state, len(reported_state), self.send_reported_state_callback, SEND_REPORTED_STATE_CONTEXT)
+        else:
+            print("Another Method was called")
+
+        # Azure IoT Hub Response
+        device_method_return_value = DeviceMethodReturnValue()
+        device_method_return_value.response = "{ \"Response\": \"Successful Config\" }"
+        device_method_return_value.status = 200
+
+        return device_method_return_value
+    
     # Function to Upload a specified path to an object to Azure Blob Storage
     def azure_upload_from_path(self,blob_container,blob_name,blob_object,blob_format):
         self.block_blob_service.create_blob_from_path(blob_container, blob_name,blob_object, content_settings=ContentSettings(content_type=blob_format))
 
     def get_video(self):
         # Define Variables
-        capture_time = 30
-        capture_rate = 30.0
-        preroll = 5
-        get_key = True
-        capture_video = False
-        camera_res = (256,256)
+        capture_time = self.video_capture_length
+        preroll = self.video_preroll
+        capture_video = self.capture_video
+        camera_res = (self.camera_res_len, self.camera_res_wid)
         image = numpy.empty((camera_res[1], camera_res[0],3), dtype=numpy.uint8)
+        capture_counter = 0
 
         # Set up Circular Buffer Settings
         video_stream = picamera.PiCameraCircularIO(camera_device, seconds=capture_time)
@@ -168,65 +264,77 @@ class PiImageDetection():
         my_now = datetime.now()
 
         while True:
-            # Set up a waiting time difference
-            my_later = datetime.now()
-            difference = my_later-my_now
-            seconds_past = difference.seconds
-            camera_device.wait_recording(1)
-
-            logging.debug('Analyzing Surroundings')
-            if seconds_past > preroll+1:
-                # Take Picture for the Model
-                camera_device.capture(image,'bgr', resize=camera_res, use_video_port=True)
-                camera_device.wait_recording(1)
-                
-                # Take Picture for Azure
-                image_name = "image-{0}.jpg".format(my_later.strftime("%Y%m%d%H%M%S"))
-                image_path = "{0}/{1}".format(SCRIPT_DIR, image_name)
-                camera_device.capture(image_path)
+            if capture_counter < 8:
+                # Set up a waiting time difference
+                my_later = datetime.now()
+                difference = my_later-my_now
+                seconds_past = difference.seconds
                 camera_device.wait_recording(1)
 
-                # Make Prediction with the first picture
-                logging.debug('Prediction Captured')
-                word, predict_value = self.model_predict(image)
-                
-                # Give time here for model predictions
-                camera_device.wait_recording(3)
-                logging.debug('Prediction Returned')
-                my_now = datetime.now()
-                
-                if word is None:
-                    logging.debug('No Event Registered')
-                    capture_video = False
-                    # Format specifically for the Good Folder
-                    bad_image_folder = "{0}/badimages".format(self.picture_container_name)
-                    # Send Picture to the Bad Images Folder on Azure that can be used to retrain
-                    self.azure_upload_from_path(bad_image_folder, image_name, image_path, 'image/jpeg')
-                elif word is not None and predict_value < 0.4:
-                    logging.debug('Prediction Value Too Low')
-                    capture_video = False
-                    # Format Specifically for the Good FOlder
-                    bad_image_folder = "{0}/badimages".format(self.picture_container_name)
-                    # Send Picture to the Bad Images Folder on Azure that can be used to retrain
-                    self.azure_upload_from_path(bad_image_folder, image_name, image_path, 'image/jpeg')
-                    camera_device.wait_recording(2)
-                else:
-                    # See what we got back from the model
-                    logging.debug('Event Registered')
-                    capture_video=True
-                    print('Prediction(s): {}'.format(word))
-                    # Format specifically for the Good Folder
-                    good_image_folder = "{0}/goodimages".format(self.picture_container_name)
-                    # Send the Picture to the Good Images Folder on Azure
-                    self.azure_upload_from_path(good_image_folder, image_name, image_path, 'image/jpeg')
-                    camera_device.wait_recording(2)
-                    # Once it is uploaded, delete the image
+                logging.debug('Analyzing Surroundings')
+                if seconds_past > preroll+1:
+                    # Take Picture for the Model
+                    camera_device.capture(image,'bgr', resize=camera_res, use_video_port=True)
+                    camera_device.wait_recording(1)
+                    
+                    # Take Picture for Azure
+                    image_name = "image-{0}.jpg".format(my_later.strftime("%Y%m%d%H%M%S"))
+                    image_path = "{0}/{1}".format(SCRIPT_DIR, image_name)
+                    camera_device.capture(image_path)
+                    camera_device.wait_recording(1)
+
+                    #print("Prediction Threshold: {}".format(self.prediction_threshold))
+                    # Make Prediction with the first picture
+                    logging.debug('Prediction Captured')
+                    word, predict_value = self.model_predict(image)
+                    
+                    # Give time here for model predictions
+                    camera_device.wait_recording(3)
+                    logging.debug('Prediction Returned')
+                    my_now = datetime.now()
+                    
+                    if word is None:
+                        logging.debug('No Event Registered')
+                        if self.send_twilio_sms == True:
+                            self.twilio_messaging(word, predict_value)
+                        capture_video = False
+                        # Format specifically for the Good Folder
+                        bad_image_folder = "{0}/badimages".format(self.picture_container_name)
+                        # Send Picture to the Bad Images Folder on Azure that can be used to retrain
+                        self.azure_upload_from_path(bad_image_folder, image_name, image_path, 'image/jpeg')
+                    elif word is not None and predict_value < self.prediction_threshold:
+                        logging.debug('Prediction Value Too Low')
+                        capture_video = False
+                        # Format Specifically for the Good FOlder
+                        bad_image_folder = "{0}/badimages".format(self.picture_container_name)
+                        # Send Picture to the Bad Images Folder on Azure that can be used to retrain
+                        self.azure_upload_from_path(bad_image_folder, image_name, image_path, 'image/jpeg')
+                        # Send Twilio Message
+                        camera_device.wait_recording(2)
+                    else:
+                        # See what we got back from the model
+                        logging.debug('Event Registered')
+                        capture_video=True
+                        print('Prediction(s): {}'.format(word))
+                        if self.send_twilio_sms == True:
+                            self.twilio_messaging(word, predict_value)
+
+                        # Format specifically for the Good Folder
+                        good_image_folder = "{0}/goodimages".format(self.picture_container_name)
+                        # Send the Picture to the Good Images Folder on Azure
+                        self.azure_upload_from_path(good_image_folder, image_name, image_path, 'image/jpeg')
+                        camera_device.wait_recording(2)
+                        # Once it is uploaded, delete the image
+                        os.remove(image_path)
+                        break
+                    # If we don;t break by finidng the right predicition stay in the loop
+                    seconds_past = 0
+                    capture_counter = capture_counter + 1
+                    # Delete the image from the OS folder to save space
                     os.remove(image_path)
-                    break
-                # If we don;t break by finidng the right predicition stay in the loop
-                seconds_past = 0
-                # Delete the image from the OS folder to save space
-                os.remove(image_path)
+            else:
+                camera_device.stop_recording()
+                return
 
         ## Create diretory to save the video that we get if we are told to capture video
         start_time = my_later
@@ -269,8 +377,8 @@ class PiImageDetection():
             camera_device.wait_recording(preroll+5)
                     
             # Convert to MP4 format for viewing
-            self.save_video(capture_rate, before_event_path, before_path_temp, before_mp4_path)
-            self.save_video(capture_rate, after_event_path, after_path_temp, after_mp4_path)
+            self.save_video(before_event_path, before_path_temp, before_mp4_path)
+            self.save_video(after_event_path, after_path_temp, after_mp4_path)
 
             # Upload Before Videos to Azure Blob Storage
             before_video_folder = "{0}/{1}".format(self.video_container_name, 'beforevideo')
@@ -303,16 +411,13 @@ class PiImageDetection():
         # Define Globals
         global camera_device
 
-        #Define Varibles
-        capture_rate = 30.0
-
         # Intialize Log Properties
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s') 
 
         # Intilize Camera properties 
         camera_device = picamera.PiCamera()
         camera_device.resolution = (1280, 720)
-        camera_device.framerate = capture_rate
+        camera_device.framerate = self.capture_rate
         
         if camera_device is None:
             logging.debug("No Camera Device Found.")
@@ -326,16 +431,22 @@ class PiImageDetection():
                 
         # Intialize the updates Json File
         update_json_path = "{0}/{1}.json".format(SCRIPT_DIR, 'updatehistory')
-            
-        # Constantly run the Edge.py Script
-        while True:
-            logging.debug('Starting Edge.py')
+        
+        # Intialize IoTHub
+        try:
+            self.iothub_client_init()
+            # Constantly run the Edge.py Script
+            while True:
+                logging.debug('Starting Edge.py')
 
-            # Check and Run Model Updates
-            self.azure_model_update(update_json_path)
+                # Check and Run Model Updates
+                self.azure_model_update(update_json_path)
                 
-            # Began running and stay running the entire project.
-            self.get_video()
+                # Began running and stay running the entire project.
+                self.get_video()
+        except IoTHubError as iothub_error:
+            print ( "Unexpected error %s from IoTHub" % iothub_error )
+            return
     
 
 if __name__ == '__main__':
