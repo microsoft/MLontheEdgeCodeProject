@@ -4,6 +4,7 @@
 #  Project:  MLontheEdgeCodeStory
 #  File:     Host.py
 #  Authors:  David (Seun) Odun-Ayo
+#  Emails:   dodunayo@nd.edu | dave_seun@yahoo.com
 #  Description: User runs this on there host computer to transfer pi3 folder
 #   and its corresponding categories.txt to Azure Blob Storage 
 #  Requires: Python 3.x

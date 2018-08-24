@@ -5,6 +5,7 @@
 #  Project:  MLontheEdgeCodeStory
 #  File:     pisetup.py
 #  Authors:  David (Seun) Odun-Ayo
+#  Emails:   dodunayo@nd.edu | dave_seun@yahoo.com
 #  Description: This script gets the latest version of the pi3 folder  and 
 #   categories.txt from azure blob storage and then makes it for use on the 
 #   project 
