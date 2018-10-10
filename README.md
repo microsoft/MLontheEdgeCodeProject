@@ -143,7 +143,7 @@ python <ELL-root>/tools/wrap/wrap.py model.ell --language python --target pi3
 **Build Python Module:**
 
 The final step in the process is getting the pi3 folder transfered to Azure Blob Storage and the Raspberry Pi
-1. A helper script for tranfering to Azure Blob Storage has been created; *Host.py*. Simply change the Azure Account Storage Name and Key in the Host.py script and run it in the same directory as the **pi3 folder.** This will compress the neccessary folder and make it availbale to be used by the Raspberry Pi.
+1. A helper script for tranfering to Azure Blob Storage has been created; *Host.py*. Simply change the Azure Account Storage Name and Key in the Host.py script and run it in the same directory as the **pi3 folder.** This will compress the necessary folder and make it available to be used by the Raspberry Pi.
 ```
 python Host.py
 ```
@@ -192,7 +192,7 @@ docker pull amlonedge\dockonedge:latest
 **Note:** This is a very large image and will take approximately 15 minutes to be completely ready for use.
 
 2. Once this is done, in your preferred working directory, create a **env.list** file. A copy of what is required is available on this repository. 
-3. The downloaded docker images requires a user Azure Blob Storage Name and Key to be entired as enviromental variables in order to run. This should be the Azure Storage accounnt where your **zippedpi3** folder is located and where you would like project imgaes and video saved too.
+3. The downloaded docker images requires a user Azure Blob Storage Name and Key to be entired as enviromental variables in order to run. This should be the Azure Storage accounnt where your **zippedpi3** folder is located and where you would like project images and video saved too.
 
 ```bash
 vim env.list
@@ -204,7 +204,7 @@ AZURE_CONTAINER_KEY=yourblobstorageaccesskey
 ```bash
 docker run --device=/dev/vcsm --device=/dev/vchiq --env-file env.list amlonedge/dockeronedge:latest 
 ```
-4. Once this command is ran, the project must check and update various files as neccesary. After about 30 seconds of setting up, the project is run continously. Afterwards, predictions, images and video are set to the given Azure Blob Storage Account.  
+4. Once this command is ran, the project must check and update various files as neccesary. After about 30 seconds of setting up, the project is run continuously. Afterwards, predictions, images and video are set to the given Azure Blob Storage Account.  
 
 ## **Do It Yourself**
 ***Necessary Python Packages***
@@ -216,7 +216,7 @@ sudo apt-get update
 sudo apt-get install -y cmake
 ```
 **OpenBLAS:**
-This is for fast linear algerba operations. This is highly recommended because it can significantly increase the speed of the models. Type:
+This is for fast linear algebra operations. This is highly recommended because it can significantly increase the speed of the models. Type:
 ```bash
 sudo apt-get install -y libopenblas-dev
 ```
@@ -238,7 +238,7 @@ sudo apt-get upgrade -y
 ```bash
 python3 --version
 ```
-4. Install some pre-requisities for the OpenCV Download:
+4. Install some pre-requisites for the OpenCV Download:
 ```bash
 sudo apt-get install -y build-essential cmake pkg-config
 sudo apt-get install -y libjpeg-dev libtiff5-dev libjasper-dev libpng12-dev libdc1394-22-dev
